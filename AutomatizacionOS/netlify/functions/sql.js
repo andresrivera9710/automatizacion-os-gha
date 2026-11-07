@@ -48,10 +48,15 @@ function parseCookies(cookieHeader) {
 }
 
 exports.handler = async function (event) {
+    const origin = event.headers?.origin || event.headers?.Origin || '*';
     const headers = {
         'Content-Type': 'application/json; charset=utf-8',
         'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'no-store'
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+        'Access-Control-Allow-Credentials': 'true'
     };
 
     if (event.httpMethod === 'OPTIONS') {

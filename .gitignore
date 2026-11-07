@@ -1,18 +1,7 @@
-# Dependencias
-node_modules/
-**/node_modules/
-
-# Variables de entorno, secretos y certificados (NUNCA SUBIR A GITHUB)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.*
+# Variables de entorno, secretos y certificados (Blindaje DevSecOps)
+.env*
 !.env.example
-**/.env
-**/.env.local
-**/.env.*
+**/.env*
 !**/.env.example
 *.pem
 *.key
@@ -22,9 +11,13 @@ node_modules/
 readmegithub.md
 **/readmegithub.md
 
-# Artefactos de compilación y despliegue
+# Dependencias y artefactos de compilación/despliegue
+node_modules/
+**/node_modules/
 dist/
+**/dist/
 build/
+**/build/
 .netlify/
 **/.netlify/
 

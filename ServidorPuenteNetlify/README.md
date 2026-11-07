@@ -7,3 +7,4 @@ Este proyecto aloja de forma independiente el **Servidor Puente Serverless en Ne
 - `public/_redirects`: Redirige `/api/sql` hacia `/.netlify/functions/sql`.
 - `netlify/functions/sql.js`: Función Serverless con CORS habilitado (`Access-Control-Allow-Origin: *`) para recibir peticiones desde proyectos locales (`http://localhost`, `http://127.0.0.1` o archivos HTML locales).
 - `netlify.toml`: Configuración de despliegue y cabeceras CORS para consumo local.
+

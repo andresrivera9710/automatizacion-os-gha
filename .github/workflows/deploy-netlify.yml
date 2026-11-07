@@ -1,0 +1,73 @@
+name: DevSecOps CI/CD - Auditoría y Despliegue Seguro a Netlify
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-audit-and-deploy:
+    name: Auditoría de Secretos, Build & Deploy a Netlify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 1. Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 2. Auditoría DevSecOps (Detección de archivos sensibles y tokens)
+        run: |
+          echo "🔍 Verificando que no existan archivos .env, llaves privadas ni readmegithub.md en el árbol Git..."
+          if git ls-files | grep -E '(^|/)\.env($|\..*)|readmegithub\.md$|\.(pem|key|pfx|p12)$' | grep -v '\.env\.example$'; then
+            echo "❌ ERROR CRÍTICO DE SEGURIDAD: Se detectaron archivos sensibles versionados en Git."
+            exit 1
+          fi
+
+          echo "🔍 Escaneando patrones de tokens expuestos (GitHub PAT / Netlify PAT)..."
+          if git grep -E '(ghp_[A-Za-z0-9]{30,}|nfp_[A-Za-z0-9]{30,})' -- . ':!*.lock'; then
+            echo "❌ ERROR CRÍTICO DE SEGURIDAD: Se detectó un token de acceso personal expuesto en el código."
+            exit 1
+          fi
+          echo "✅ Auditoría de secretos superada sin hallazgos en el árbol actual."
+
+      - name: 3. Configurar entorno Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: AutomatizacionOS/package-lock.json
+
+      - name: 4. Instalar dependencias limpias y validar sintaxis del Backend
+        working-directory: AutomatizacionOS
+        run: |
+          npm ci --omit=dev --no-audit --no-fund
+          node --check server.js
+          node --check src/app.js
+          node --check src/services/sqlService.js
+          node --check netlify/functions/sql.js
+          cp -f index.html public/index.html
+
+      - name: 5. Despliegue Automatizado a Netlify (Producción)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ]; then
+            echo "⚠️ Aviso: Configura los GitHub Secrets NETLIFY_AUTH_TOKEN y NETLIFY_SITE_ID en Settings > Secrets and variables > Actions."
+            exit 0
+          fi
+          npx --yes netlify-cli@latest deploy \
+            --prod \
+            --dir="AutomatizacionOS/public" \
+            --functions="AutomatizacionOS/netlify/functions" \
+            --site="$NETLIFY_SITE_ID" \
+            --auth="$NETLIFY_AUTH_TOKEN" \
+            --message="CI/CD GitHub Actions Deploy (${GITHUB_SHA::7})"
