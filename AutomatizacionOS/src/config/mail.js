@@ -2,7 +2,7 @@ const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
 const mailConfig = {
-    method: process.env.MAIL_METHOD || 'smtp', // 'smtp' o 'outlook'
+    method: process.env.MAIL_METHOD || 'smtp',
     smtp: {
         host: process.env.SMTP_HOST || 'smtp.office365.com',
         port: parseInt(process.env.SMTP_PORT, 10) || 587,

@@ -1114,12 +1114,12 @@
                         style="background: rgba(255,255,255,0.2); padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 6px;">
                         <span>💾 Guardado automático en proceso...</span>
                     </div>
-                    <div id="statusEnvioCorreo"
-                        style="background: rgba(255,255,255,0.2); padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 6px;">
-                        <span>📧 Preparando envío de correo vía Outlook...</span>
+                    <div id="statusDescargaAutomatica"
+                        style="background: rgba(16, 185, 129, 0.35); padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; color: #ffffff; display: flex; align-items: center; gap: 6px;">
+                        <span>📥 Descarga automática de HTML completada</span>
                     </div>
                     <div style="font-size: 0.74rem; color: #a7f3d0;">
-                        Ruta: <code>Htmls/Informacion/GHA-[Correlativo]-AVIANCA-NA.html</code>
+                        Archivo: <code>GHA-[Correlativo]-AVIANCA-NA.html</code>
                     </div>
                 </div>
             </div>
@@ -1173,12 +1173,6 @@
                     <button type="button" class="btn btn-secondary" onclick="copiarHtmlAlPortapapeles()"
                         style="display: flex; align-items: center; gap: 6px;" title="Copiar código HTML">
                         <span>📋</span> Copiar Código
-                    </button>
-                    <button type="button" class="btn btn-emerald" id="btnReenviarCorreo"
-                        onclick="enviarCorreoNotificacionManual()"
-                        style="display: flex; align-items: center; gap: 6px; background: #0284c7;"
-                        title="Enviar o reenviar notificación por correo vía Outlook">
-                        <span>✉️</span> Enviar Correo
                     </button>
                     <button type="button" class="btn btn-primary" onclick="reiniciarParaNuevaOrden()"
                         style="background: #475569; display: flex; align-items: center; gap: 6px;"
@@ -2103,26 +2097,26 @@
                     // 3. Guardar el archivo HTML automáticamente en el servidor
                     guardarArchivoHtmlEnServidor(data.correlativo, htmlGenerado);
 
-                    // 4. Enviar notificaciÃ³n por correo electrÃ³nico vÃ­a Microsoft Outlook
-                    enviarCorreoOrdenServicio(data.correlativo, fechaOS, filasProcesadas, usuarioSesion);
+                    // 4. Descargar automáticamente el archivo HTML generado al equipo local
+                    descargarArchivoHtmlOS();
 
-                    // 4. Poblar las etiquetas del Paso 5
+                    // 5. Poblar las etiquetas del Paso 5
                     document.getElementById('labelCorrelativoAsignado').textContent = `OS-${data.correlativo}`;
                     document.getElementById('labelCorrelativoCompleto').textContent = `GHA-${data.correlativo}-AVIANCA-NA`;
                     document.getElementById('resumenTecnicoOS').textContent = usuarioSesion.Nombre || usuarioSesion.Usuario;
                     document.getElementById('resumenFechaOS').textContent = formatearFechaEspanol(fechaOS);
                     document.getElementById('resumenTotalGuiasOS').textContent = `${data.totalInsertados || filasProcesadas.length} guías`;
 
-                    const totalMontoOS = filasProcesadas.reduce((acc, f) => acc + (parseFloat(f.Monto) || 0), 0);
+                    const totalMontoOS = filasProcesadas.reduce((acc, f) => acc + (parseFloat(f.monto ?? f.Monto) || 0), 0);
                     document.getElementById('resumenTotalMontoOS').textContent = `Q ${totalMontoOS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-                    // 5. Cargar el HTML estructurado dentro del iframe de previsualización
+                    // 6. Cargar el HTML estructurado dentro del iframe de previsualización
                     const iframe = document.getElementById('iframePrevisualizacionOS');
                     if (iframe) {
                         iframe.srcdoc = htmlGenerado;
                     }
 
-                    // 6. Habilitar la pestaña del Paso 5 y navegar a ella
+                    // 7. Habilitar la pestaña del Paso 5 y navegar a ella
                     const tab5 = document.getElementById('tabStep5');
                     if (tab5) tab5.classList.remove('disabled');
 
@@ -2132,7 +2126,7 @@
                         🎉 <strong>¡Orden de Servicio registrada exitosamente!</strong><br>
                         • <strong>Correlativo Asignado:</strong> <span style="color:#b91c1c; font-weight:800;">OS-${data.correlativo}</span> (GHA-${data.correlativo}-AVIANCA-NA)<br>
                         • <strong>Líneas Registradas:</strong> ${data.totalInsertados} de ${data.totalEsperados}<br>
-                        • Se ha estructurado y generado la plantilla oficial en la previsualización inferior.
+                        • 📥 El archivo oficial <code>GHA-${data.correlativo}-AVIANCA-NA.html</code> se ha descargado automáticamente a su equipo.
                     `);
                 } else {
                     actualizarProgreso(100);
@@ -2429,7 +2423,7 @@ ${lineasServicioHtml}
         async function guardarArchivoHtmlEnServidor(correlativo, contenidoHtml) {
             const statusBox = document.getElementById('statusGuardadoArchivo');
             if (!bridgeDisponible) {
-                if (statusBox) statusBox.innerHTML = 'â„¹ï¸ <em>Nota: Modo navegador activo. Descargue el archivo HTML directamente con el botÃ³n superior.</em>';
+                if (statusBox) statusBox.innerHTML = 'ℹ️ <em>Modo navegador activo. Archivo HTML descargado directamente al equipo.</em>';
                 return;
             }
             try {
@@ -2444,95 +2438,15 @@ ${lineasServicioHtml}
                 });
                 const res = await resp.json();
                 if (res.resultado === 1) {
-                    if (statusBox) statusBox.innerHTML = `ðŸ“ <strong>Archivo almacenado en servidor:</strong> <code>Htmls/Informacion/${res.nombreArchivo}</code>`;
+                    if (statusBox) statusBox.innerHTML = `💾 <strong>Archivo almacenado en servidor:</strong> <code>Htmls/Informacion/${res.nombreArchivo}</code>`;
                 }
             } catch (e) {
-                console.warn('No se pudo guardar automÃ¡ticamente en el servidor:', e);
+                console.warn('No se pudo guardar automáticamente en el servidor:', e);
             }
-        }
-
-
-
-        async function enviarCorreoOrdenServicio(correlativo, fechaOS, filas, usuario) {
-            const statusBox = document.getElementById('statusEnvioCorreo');
-            if (statusBox) {
-                statusBox.innerHTML = '<span>ðŸ“§ Enviando correo vÃ­a Outlook...</span>';
-                statusBox.style.background = 'rgba(2, 132, 199, 0.4)';
-            }
-
-            if (!bridgeDisponible) {
-                if (statusBox) {
-                    statusBox.innerHTML = '<span>âš ï¸ Servicio puente desconectado (No se enviÃ³ correo)</span>';
-                    statusBox.style.background = 'rgba(220, 38, 38, 0.4)';
-                }
-                return;
-            }
-
-            try {
-                const totalMontoOS = (filas || []).reduce((acc, f) => acc + (parseFloat(f.monto || f.Monto || 0) || 0), 0);
-                const payload = {
-                    action: 'enviar_correo_os',
-                    correlativo: correlativo,
-                    fechaOS: formatearFechaEspanol(fechaOS),
-                    tecnico: usuario ? (usuario.Nombre || usuario.Usuario) : 'TÃ‰CNICO GHA',
-                    totalGuias: (filas || []).length,
-                    totalMonto: totalMontoOS.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    destinatarios: 'programadorit@laats.net; monicaaracely@laats.net; facturacion@laats.net',
-                    contenidoHtml: htmlOrdenServicioGenerado
-                };
-
-                const resp = await fetch(SQL_DIRECT_CONFIG.localBridgeUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await resp.json();
-                if (resp.ok && data.resultado === 1) {
-                    if (statusBox) {
-                        statusBox.innerHTML = `<span>✅ Correo enviado desde: ${(data.cuentaEmisora || "Outlook")}</span>`;
-                        statusBox.style.background = "rgba(16, 185, 129, 0.4)";
-                        statusBox.title = `Destinatarios: ${data.destinatarios || ""}`;
-                    }
-                    mostrarAlerta("success", `
-                        🎉 <strong>¡Orden de Servicio registrada y notificada!</strong><br>
-                        • <strong>Correlativo:</strong> <span style="color:#b91c1c; font-weight:800;">OS-${correlativo}</span> (GHA-${correlativo}-AVIANCA-NA)<br>
-                        • 📧 <strong>Correo enviado vía Outlook</strong> desde <em>${data.cuentaEmisora || "Outlook"}</em> hacia: <code>programadorit@laats.net; monicaaracely@laats.net; facturacion@laats.net</code> con el archivo HTML adjunto.
-                    `);
-                } else {
-                    const errorMsg = data.mensaje || "Error al intentar enviar el correo vía Outlook.";
-                    if (statusBox) {
-                        statusBox.innerHTML = `<span>⚠️ Error en configuración de correo</span>`;
-                        statusBox.style.background = "rgba(220, 38, 38, 0.4)";
-                        statusBox.title = errorMsg;
-                    }
-                    mostrarAlerta("warn", `
-                        ⚠️ <strong>Notificación de Correo (Outlook):</strong><br>
-                        ${errorMsg}<br>
-                        <small>Asegúrese de que Microsoft Outlook esté abierto en este equipo con su cuenta institucional y presione el botón <strong>"Enviar Correo"</strong> para reintentar.</small>
-                    `);
-                }
-            } catch (err) {
-                if (statusBox) {
-                    statusBox.innerHTML = '<span>âš ï¸ Fallo de conexiÃ³n para envÃ­o de correo</span>';
-                    statusBox.style.background = 'rgba(220, 38, 38, 0.4)';
-                }
-                console.warn('Error en el envÃ­o de correo:', err);
-            }
-        }
-
-        async function enviarCorreoNotificacionManual() {
-            if (!ultimoCorrelativoGenerado) {
-                mostrarAlerta('warn', 'âš ï¸ Debe registrar una Orden de Servicio antes de enviar el correo de notificaciÃ³n.');
-                return;
-            }
-            const fechaOS = document.getElementById('fechaOS').value;
-            mostrarAlerta('info', 'ðŸ“§ Intentando enviar la notificaciÃ³n por correo a travÃ©s de Microsoft Outlook...');
-            await enviarCorreoOrdenServicio(ultimoCorrelativoGenerado, fechaOS, filasProcesadas, usuarioSesion);
         }
 
         function reiniciarParaNuevaOrden() {
-            const confirmar = confirm('Â¿Desea iniciar una nueva Orden de Servicio? Se conservarÃ¡ su identificaciÃ³n de colaborador.');
+            const confirmar = confirm('¿Desea iniciar una nueva Orden de Servicio? Se conservará su identificación de colaborador.');
             if (!confirmar) return;
 
             filasProcesadas = [];
@@ -2540,9 +2454,10 @@ ${lineasServicioHtml}
             ultimoCorrelativoGenerado = null;
             htmlOrdenServicioGenerado = '';
 
-            document.getElementById('inputExcelFile').value = '';
-            document.getElementById('fileUploadSuccess').style.display = 'none';
-            document.getElementById('fileUploadArea').style.display = 'block';
+            const fileInput = document.getElementById('fileExcelInput');
+            if (fileInput) fileInput.value = '';
+            const fileInfo = document.getElementById('fileUploadInfo');
+            if (fileInfo) fileInfo.textContent = '';
             document.getElementById('btnIrAPaso3').disabled = true;
             document.getElementById('btnIrAPaso4').disabled = true;
 

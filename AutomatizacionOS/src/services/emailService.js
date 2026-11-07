@@ -1,6 +1,4 @@
 const fs = require('fs');
-const path = require('path');
-const { spawn } = require('child_process');
 const { mailConfig, getTransporter } = require('../config/mail');
 const fileService = require('./fileService');
 const logger = require('../utils/logger');
@@ -83,92 +81,6 @@ function buildEmailHtml({ correlativo, fechaOS, tecnico, totalGuias, totalMonto,
 }
 
 /**
- * Enviar correo a través de Microsoft Outlook en Windows usando PowerShell
- */
-function sendViaOutlook({ correlativo, fechaOS, tecnico, totalGuias, totalMonto, destinatarios, rutaAdjunto, nombreArchivo }) {
-    return new Promise((resolve, reject) => {
-        logger.info(`Conectando con Microsoft Outlook local para enviar correo a: ${destinatarios}...`);
-        
-        const psScript = `
-        $destinatarios = "${destinatarios.replace(/"/g, '`"')}"
-        $rutaAdjunto = "${rutaAdjunto.replace(/\\/g, '\\\\')}"
-        $correlativo = "${correlativo}"
-        $nombreArchivo = "${nombreArchivo}"
-
-        try {
-            $outlook = $null
-            try {
-                $outlook = [System.Runtime.InteropServices.Marshal]::GetActiveObject("Outlook.Application")
-            } catch {
-                $outlook = New-Object -ComObject Outlook.Application
-            }
-            if ($null -eq $outlook) { throw "No se pudo conectar con Microsoft Outlook." }
-
-            $namespace = $outlook.GetNamespace("MAPI")
-            $cuentaEmisora = ""
-            try {
-                if ($namespace.Accounts -and $namespace.Accounts.Count -gt 0) {
-                    $cuentaEmisora = $namespace.Accounts.Item(1).SmtpAddress
-                }
-            } catch {}
-            if ([string]::IsNullOrWhiteSpace($cuentaEmisora)) { $cuentaEmisora = "Outlook Predeterminado" }
-
-            $mail = $outlook.CreateItem(0)
-            $mail.To = $destinatarios
-            $mail.Subject = "Orden de Servicio GHA-$correlativo - AVIANCA"
-            
-            $htmlBody = [Console]::In.ReadToEnd()
-            $mail.HTMLBody = $htmlBody
-            $mail.Attachments.Add($rutaAdjunto) | Out-Null
-            $mail.Send()
-
-            $resObj = @{ ok = $true; cuenta = $cuentaEmisora } | ConvertTo-Json -Compress
-            Write-Output $resObj
-        } catch {
-            $resErr = @{ ok = $false; error = $_.Exception.Message } | ConvertTo-Json -Compress
-            Write-Output $resErr
-        }
-        `;
-
-        const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript]);
-        
-        let output = '';
-        let errorOutput = '';
-
-        child.stdout.on('data', (d) => { output += d.toString(); });
-        child.stderr.on('data', (d) => { errorOutput += d.toString(); });
-
-        const htmlBody = buildEmailHtml({ correlativo, fechaOS, tecnico, totalGuias, totalMonto, nombreArchivo });
-        child.stdin.write(htmlBody);
-        child.stdin.end();
-
-        child.on('close', (code) => {
-            if (code !== 0 && !output) {
-                return reject(new Error(errorOutput || `PowerShell finalizó con código ${code}`));
-            }
-            try {
-                const parsed = JSON.parse(output.trim());
-                if (parsed.ok) {
-                    resolve({ cuentaEmisora: parsed.cuenta });
-                } else {
-                    reject(new Error(parsed.error || 'Error enviando correo en Outlook'));
-                }
-            } catch (e) {
-                if (output.includes('ok')) {
-                    resolve({ cuentaEmisora: 'Outlook' });
-                } else {
-                    reject(new Error(output || errorOutput || 'Respuesta inválida de Outlook'));
-                }
-            }
-        });
-
-        child.on('error', (err) => {
-            reject(err);
-        });
-    });
-}
-
-/**
  * Enviar correo a través de SMTP utilizando Nodemailer
  */
 async function sendViaSmtp({ correlativo, fechaOS, tecnico, totalGuias, totalMonto, destinatarios, rutaAdjunto, nombreArchivo }) {
@@ -177,7 +89,6 @@ async function sendViaSmtp({ correlativo, fechaOS, tecnico, totalGuias, totalMon
         throw new Error('Servicio SMTP no configurado en variables de entorno (SMTP_USER y SMTP_PASS requeridos)');
     }
 
-    // Normalizar lista de correos (admitir comas o puntos y coma)
     const toList = destinatarios.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
     const htmlBody = buildEmailHtml({
@@ -213,7 +124,7 @@ async function sendViaSmtp({ correlativo, fechaOS, tecnico, totalGuias, totalMon
 }
 
 /**
- * Orquestador principal de envío de correo
+ * Orquestador principal de envío de correo (exclusivamente SMTP)
  */
 async function sendOsNotificationEmail(payload) {
     const correlativo = String(payload.correlativo || '').trim();
@@ -229,7 +140,6 @@ async function sendOsNotificationEmail(payload) {
 
     const { fileName, fullPath } = fileService.getHtmlOsFilePath(correlativo);
 
-    // Si el archivo no existe aún en disco pero viene contenidoHtml en payload, guardarlo
     if (!fs.existsSync(fullPath) && payload.contenidoHtml) {
         fileService.saveHtmlOsFile(correlativo, payload.contenidoHtml);
     }
@@ -238,51 +148,16 @@ async function sendOsNotificationEmail(payload) {
         throw new Error(`Error: No se encontró el archivo HTML de la orden para adjuntar (${fullPath}).`);
     }
 
-    let result = null;
-    const isWindows = process.platform === 'win32';
-    const method = mailConfig.method;
-
-    if (method === 'outlook' && isWindows) {
-        result = await sendViaOutlook({
-            correlativo,
-            fechaOS,
-            tecnico,
-            totalGuias,
-            totalMonto,
-            destinatarios,
-            rutaAdjunto: fullPath,
-            nombreArchivo: fileName
-        });
-    } else {
-        try {
-            result = await sendViaSmtp({
-                correlativo,
-                fechaOS,
-                tecnico,
-                totalGuias,
-                totalMonto,
-                destinatarios,
-                rutaAdjunto: fullPath,
-                nombreArchivo: fileName
-            });
-        } catch (smtpErr) {
-            if (isWindows) {
-                logger.warn(`Fallo envío SMTP (${smtpErr.message}). Intentando fallback con Microsoft Outlook local...`);
-                result = await sendViaOutlook({
-                    correlativo,
-                    fechaOS,
-                    tecnico,
-                    totalGuias,
-                    totalMonto,
-                    destinatarios,
-                    rutaAdjunto: fullPath,
-                    nombreArchivo: fileName
-                });
-            } else {
-                throw smtpErr;
-            }
-        }
-    }
+    const result = await sendViaSmtp({
+        correlativo,
+        fechaOS,
+        tecnico,
+        totalGuias,
+        totalMonto,
+        destinatarios,
+        rutaAdjunto: fullPath,
+        nombreArchivo: fileName
+    });
 
     return {
         resultado: 1,
@@ -297,4 +172,3 @@ module.exports = {
     sendOsNotificationEmail,
     buildEmailHtml
 };
-
