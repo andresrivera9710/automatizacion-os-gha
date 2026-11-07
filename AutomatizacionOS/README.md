@@ -78,13 +78,14 @@ HOST=0.0.0.0
 NODE_ENV=production
 
 # Base de Datos Azure SQL (SIO)
-DB_SERVER=mysqullaats23.database.windows.net
+DB_SERVER=tu_servidor.database.windows.net
 DB_PORT=1433
 DB_NAME=SIO
-DB_USER=LaatsBdAD
-DB_PASSWORD=AndresRivera!9710
+DB_USER=tu_usuario_sql
+DB_PASSWORD=tu_password_sql_seguro
 DB_ENCRYPT=true
 DB_TRUST_SERVER_CERTIFICATE=false
+SESSION_SECRET=tu_secreto_de_sesion_256_bits
 
 # Carpeta de almacenamiento de órdenes HTML
 INFORMACION_DIR=../Informacion

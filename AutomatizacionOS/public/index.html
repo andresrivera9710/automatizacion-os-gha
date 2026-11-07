@@ -4,9 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema corporativo de Automatización de Órdenes de Servicio GHA Avianca (SIO - LAATS)">
     <title>Automatización de Órdenes de Servicio - GHA | SIO</title>
-    <!-- SheetJS (XLSX) para lectura en cliente de archivos .xlsx, .xls y .csv -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Preconexión a CDN y carga diferida (defer) para optimizar FCP/LCP -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <style>
         :root {
             --primary: #0f172a;
@@ -728,6 +731,37 @@
             padding-top: 16px;
             border-top: 1px solid var(--border);
         }
+
+        /* Skeleton Loader y Barra de Paginación Virtual */
+        .skeleton-box {
+            height: 18px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+            background-size: 200% 100%;
+            animation: skeleton-shimmer 1.4s infinite;
+        }
+
+        @keyframes skeleton-shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .pagination-bar {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            font-size: 0.82rem;
+            color: var(--muted);
+        }
+
+        .pagination-bar.active {
+            display: flex;
+        }
     </style>
 </head>
 
@@ -830,6 +864,9 @@
             </p>
 
             <form id="formPinLogin" onsubmit="validarLoginPIN(event)">
+                <!-- Campo Honeypot Anti-Bot (oculto para usuarios reales) -->
+                <input type="text" id="website_hp" name="website_hp" tabindex="-1" autocomplete="off"
+                    style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;" aria-hidden="true">
                 <div class="form-group" style="align-items: center; margin-bottom: 20px;">
                     <label for="inputPin">PIN de Acceso</label>
                     <input type="password" id="inputPin" class="pin-input" placeholder="••••••••" required
@@ -982,7 +1019,7 @@
                             </button>
                         </div>
                         <input type="search" id="quickFilter" class="search-quick"
-                            placeholder="Filtrar por Guía, Monto, Forma de Pago..." oninput="filtrarTablaLocal()">
+                            placeholder="Filtrar por Guía, Monto, Forma de Pago..." oninput="filtrarTablaConDebounce()">
                     </div>
                 </div>
 
@@ -1011,6 +1048,14 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                <div class="pagination-bar" id="paginationToolbar">
+                    <span id="paginationInfo">Mostrando 0 de 0 registros</span>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnPrevPage" onclick="cambiarPaginaTabla(-1)">⬅ Anterior</button>
+                        <span id="paginationPageIndicator" style="font-weight: 700; color: var(--primary);">Página 1</span>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnNextPage" onclick="cambiarPaginaTabla(1)">Siguiente ➜</button>
+                    </div>
                 </div>
 
                 <div class="nav-buttons-container">
@@ -1185,7 +1230,7 @@
             <!-- CONTENEDOR CON IFRAME DE PREVISUALIZACIÓN -->
             <div
                 style="border: 2px solid #cbd5e1; border-radius: 10px; overflow: hidden; background: #525659; box-shadow: inset 0 2px 6px rgba(0,0,0,0.15);">
-                <iframe id="iframePrevisualizacionOS"
+                <iframe id="iframePrevisualizacionOS" loading="lazy"
                     style="width: 100%; height: 780px; border: none; background: #ffffff; display: block;"
                     title="Previsualización Oficial de Orden de Servicio"></iframe>
             </div>
@@ -1203,15 +1248,9 @@
 
     <script>
         // =====================================================================
-        // CONFIGURACIÓN Y PARÁMETROS GLOBALES (ESTILO SOLICITUD AP)
+        // CONFIGURACIÓN SEGURA DE ENDPOINT (SIN SECRETOS EN CLIENTE)
         // =====================================================================
         const SQL_DIRECT_CONFIG = {
-            server: 'mysqullaats23.database.windows.net',
-            databaseSIO: 'SIO',
-            databaseMaster: 'master',
-            user: 'LaatsBdAD',
-            password: 'AndresRivera!9710',
-            firewallRule: 'FLORPELLECER',
             localBridgeUrl: (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http'))
                 ? (window.location.origin + '/api/sql')
                 : 'http://127.0.0.1:3080/api/sql'
@@ -1238,11 +1277,14 @@
         let apagadoIniciado = false;
         let filasProcesadas = [];
         let filasFiltradas = [];
+        let paginaActualTabla = 1;
+        const FILAS_POR_PAGINA = 100;
+        let filtroDebounceTimer = null;
         let ipPublicaDetectada = null;
         let ultimaIpRegistradaFirewall = localStorage.getItem('SIO_FIREWALL_IP_FLORPELLECER') || null;
         let bridgeDisponible = false;
 
-        // Inicialización
+        // Inicialización y redirección de ruta obligatoria a /login
         window.addEventListener('DOMContentLoaded', async () => {
             const hoy = new Date();
             document.getElementById('fechaOS').value = formatearFechaInput(hoy);
@@ -1253,6 +1295,13 @@
             detectarIPPublicaCliente();
             configurarDragAndDrop();
             recuperarSesionPrevia();
+
+            // Si no hay sesión activa y estamos en servidor HTTP/HTTPS, asegurar ruta /login
+            if (!usuarioSesion && window.location.protocol.startsWith('http') && window.location.pathname !== '/login') {
+                try {
+                    window.history.replaceState(null, '', '/login');
+                } catch (_) { }
+            }
         });
 
         function formatearFechaInput(fecha) {
@@ -1512,12 +1561,15 @@
                     }
                 }
 
+                const honeypotVal = document.getElementById('website_hp')?.value || '';
                 const resp = await fetch(SQL_DIRECT_CONFIG.localBridgeUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         action: 'login',
-                        pin: pinInput
+                        pin: pinInput,
+                        website_hp: honeypotVal
                     })
                 });
 
@@ -1538,6 +1590,12 @@
             usuarioSesion = usuario;
             sessionStorage.setItem('SIO_GHA_USER', JSON.stringify(usuario));
 
+            if (window.location.protocol.startsWith('http') && window.location.pathname === '/login') {
+                try {
+                    window.history.replaceState(null, '', '/welcome');
+                } catch (_) { }
+            }
+
             document.getElementById('formPinLogin').style.display = 'none';
             document.getElementById('userLoggedCard').style.display = 'block';
             document.getElementById('userLoggedName').textContent = usuario.Nombre;
@@ -1555,6 +1613,19 @@
         function cerrarSesionUsuario() {
             usuarioSesion = null;
             sessionStorage.removeItem('SIO_GHA_USER');
+            if (bridgeDisponible) {
+                fetch(SQL_DIRECT_CONFIG.localBridgeUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ action: 'logout' })
+                }).catch(() => { });
+            }
+            if (window.location.protocol.startsWith('http')) {
+                try {
+                    window.history.replaceState(null, '', '/login');
+                } catch (_) { }
+            }
             document.getElementById('formPinLogin').style.display = 'block';
             document.getElementById('userLoggedCard').style.display = 'none';
             document.getElementById('inputPin').value = '';
@@ -1796,23 +1867,45 @@
         }
 
         // =====================================================================
-        // 4. PASO 3: TABLA DE VISUALIZACIÓN DETALLE OS (CÓDIGO 281)
+        // 4. PASO 3: TABLA DE VISUALIZACIÓN DETALLE OS (PAGINADA + DEBOUNCE)
         // =====================================================================
         function renderizarTablaDetalles(filas) {
             const tbody = document.getElementById('tablaDetallesBody');
+            const paginationToolbar = document.getElementById('paginationToolbar');
             document.getElementById('badgeTableCount').textContent = `(${filas.length} registros)`;
 
             if (!filas || filas.length === 0) {
+                if (paginationToolbar) paginationToolbar.classList.remove('active');
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="13" class="empty-state">
+                        <td colspan="11" class="empty-state">
                             No se encontraron registros que coincidan con la búsqueda.
                         </td>
                     </tr>`;
                 return;
             }
 
-            tbody.innerHTML = filas.map((r) => {
+            const totalPaginas = Math.max(1, Math.ceil(filas.length / FILAS_POR_PAGINA));
+            if (paginaActualTabla > totalPaginas) paginaActualTabla = totalPaginas;
+            if (paginaActualTabla < 1) paginaActualTabla = 1;
+
+            const inicio = (paginaActualTabla - 1) * FILAS_POR_PAGINA;
+            const fin = Math.min(inicio + FILAS_POR_PAGINA, filas.length);
+            const filasPagina = filas.slice(inicio, fin);
+
+            if (paginationToolbar) {
+                if (filas.length > FILAS_POR_PAGINA) {
+                    paginationToolbar.classList.add('active');
+                    document.getElementById('paginationInfo').textContent = `Mostrando ${inicio + 1} - ${fin} de ${filas.length} registros`;
+                    document.getElementById('paginationPageIndicator').textContent = `Página ${paginaActualTabla} de ${totalPaginas}`;
+                    document.getElementById('btnPrevPage').disabled = paginaActualTabla <= 1;
+                    document.getElementById('btnNextPage').disabled = paginaActualTabla >= totalPaginas;
+                } else {
+                    paginationToolbar.classList.remove('active');
+                }
+            }
+
+            tbody.innerHTML = filasPagina.map((r) => {
                 const esDPTF = r.origenColumna === 'DP/TF';
                 const esTC = r.origenColumna === 'TC';
                 const esEFCQ = r.origenColumna === 'EF/CQ';
@@ -1862,6 +1955,19 @@
                     </tr>
                 `;
             }).join('');
+        }
+
+        function cambiarPaginaTabla(delta) {
+            paginaActualTabla += delta;
+            renderizarTablaDetalles(filasFiltradas);
+        }
+
+        function filtrarTablaConDebounce() {
+            if (filtroDebounceTimer) clearTimeout(filtroDebounceTimer);
+            filtroDebounceTimer = setTimeout(() => {
+                paginaActualTabla = 1;
+                filtrarTablaLocal();
+            }, 180);
         }
 
         function cambiarMetodoPagoFila(indexOriginal, nuevoMetodoId) {
@@ -2275,7 +2381,7 @@
       <tr style='background-color:#C5C4C4;'>
         <th>
         <p>
-            <img align='left' style='width: 200px;height: 200px;' src="${PLANTILLA_OS_LOGO_BASE64}">
+            <img align='left' width='200' height='200' decoding='async' alt='Logo LAATS' style='width: 200px;height: 200px;aspect-ratio: 1/1;' src="${PLANTILLA_OS_LOGO_BASE64}">
         <br>
         <br>
             OMA No. DGAC/G-045-2009
@@ -2352,14 +2458,14 @@ ${lineasServicioHtml}
     <table id='t01'>
         <tr>
             <td>                
-                <img src="${PLANTILLA_OS_FIRMA1_BASE64}" style='width: 40%;'>
+                <img src="${PLANTILLA_OS_FIRMA1_BASE64}" width='240' height='90' loading='lazy' decoding='async' alt='Firma Técnico' style='width: 40%; height: auto;'>
                 <br>
                 <p>
                     ________________________________${tecnico}
                 </p>
             </td>
             <td>
-                <img src="${PLANTILLA_OS_FIRMA2_BASE64}" style='width: 40%;'>
+                <img src="${PLANTILLA_OS_FIRMA2_BASE64}" width='240' height='90' loading='lazy' decoding='async' alt='Firma Autorizada' style='width: 40%; height: auto;'>
                 <br>
                 <p>
                     ________________________________ 

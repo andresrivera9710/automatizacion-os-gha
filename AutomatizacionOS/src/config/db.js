@@ -2,11 +2,11 @@ const sql = require('mssql');
 const logger = require('../utils/logger');
 
 const dbConfig = {
-    server: process.env.DB_SERVER || 'mysqullaats23.database.windows.net',
+    server: process.env.DB_SERVER,
     port: parseInt(process.env.DB_PORT, 10) || 1433,
-    database: process.env.DB_NAME || 'SIO',
-    user: process.env.DB_USER || 'LaatsBdAD',
-    password: process.env.DB_PASSWORD || 'AndresRivera!9710',
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     options: {
         encrypt: process.env.DB_ENCRYPT !== 'false',
         trustServerCertificate: process.env.DB_TRUST_SERVER_CERTIFICATE === 'true',
@@ -28,7 +28,7 @@ async function getPool() {
         poolPromise = new sql.ConnectionPool(dbConfig)
             .connect()
             .then(pool => {
-                logger.success(`Conexión establecida con Azure SQL Database (${dbConfig.database} @ ${dbConfig.server})`);
+                logger.success(`Conexión establecida con Azure SQL Database (${dbConfig.database})`);
                 return pool;
             })
             .catch(err => {
@@ -47,14 +47,13 @@ async function testConnection() {
         return {
             ok: true,
             database: result.recordset[0]?.BaseDatos || dbConfig.database,
-            server: dbConfig.server,
+            server: dbConfig.server ? 'Azure SQL (Configurado)' : 'No definido',
             version: result.recordset[0]?.Version
         };
     } catch (err) {
         return {
             ok: false,
-            error: err.message,
-            server: dbConfig.server
+            error: err.message
         };
     }
 }
@@ -79,4 +78,3 @@ module.exports = {
     testConnection,
     closePool
 };
-

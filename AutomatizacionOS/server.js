@@ -1,8 +1,12 @@
 require('dotenv').config();
 const http = require('http');
+const { validateEnvironment } = require('./src/config/envValidator');
 const app = require('./src/app');
 const { testConnection, closePool } = require('./src/config/db');
 const logger = require('./src/utils/logger');
+
+// Validar variables críticas de entorno antes de arrancar el servidor
+validateEnvironment();
 
 const PORT = parseInt(process.env.PORT, 10) || 3080;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -12,20 +16,19 @@ const server = http.createServer(app);
 async function startServer() {
     logger.banner(
         `SERVIDOR SIO - AUTOMATIZACION OS GHA (Puerto: ${PORT})`,
-        'Arquitectura Node.js + Express JS para Servidor'
+        'Arquitectura Blindada Node.js + Express JS (RLS, Rate-Limit, CSP & Sesiones HttpOnly)'
     );
-    logger.info(`Servidor Azure SQL: ${process.env.DB_SERVER || 'mysqullaats23.database.windows.net'}`);
-    logger.info(`Base de Datos SIO: ${process.env.DB_NAME || 'SIO'}`);
+    logger.info(`Base de Datos SIO: ${process.env.DB_NAME}`);
 
     server.listen(PORT, HOST, () => {
-        logger.success(`Servidor Node.js/Express escuchando en: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-        logger.info(`Endpoint API SQL: http://localhost:${PORT}/api/sql`);
-        logger.info(`Endpoint Health Check: http://localhost:${PORT}/health`);
-        logger.info(`Aplicación web disponible en: http://localhost:${PORT}/`);
+        const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
+        logger.success(`Servidor Node.js/Express escuchando en: http://${displayHost}:${PORT}`);
+        logger.info(`Ruta de Autenticación Obligatoria: http://${displayHost}:${PORT}/login`);
+        logger.info(`Endpoint API SQL: http://${displayHost}:${PORT}/api/sql`);
+        logger.info(`Endpoint Health Check: http://${displayHost}:${PORT}/health`);
         logger.info('Presione CTRL+C para detener el servidor.\n');
     });
 
-    // Verificación de conectividad en segundo plano para no bloquear el inicio del servidor HTTP
     logger.info('Verificando conectividad inicial con Azure SQL Database...');
     testConnection().then(testResult => {
         if (testResult.ok) {

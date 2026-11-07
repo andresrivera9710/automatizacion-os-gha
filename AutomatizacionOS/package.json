@@ -1,7 +1,7 @@
 {
   "name": "automatizacion-os-gha",
-  "version": "1.0.0",
-  "description": "Servidor backend Node.js y Express para Automatización de Órdenes de Servicio GHA Avianca (SIO - LAATS)",
+  "version": "1.1.0",
+  "description": "Servidor backend Node.js y Express blindado para Automatización de Órdenes de Servicio GHA Avianca (SIO - LAATS)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,17 +13,16 @@
     "gha",
     "ordenes-de-servicio",
     "express",
-    "azure-sql"
+    "azure-sql",
+    "rls-security"
   ],
   "author": "LAATS TI",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
-    "mssql": "^12.7.14",
-    "nodemailer": "^10.3.1"
+    "mssql": "^12.7.14"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

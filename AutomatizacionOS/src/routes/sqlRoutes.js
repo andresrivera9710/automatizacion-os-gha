@@ -3,19 +3,30 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const osController = require('../controllers/osController');
 const fileController = require('../controllers/fileController');
-const emailController = require('../controllers/emailController');
+const { loginRateLimiter, apiRateLimiter, verifyAntiBotHoneypot } = require('../middlewares/securityMiddleware');
 const logger = require('../utils/logger');
+
+// Aplicar rate limit general a todas las rutas de la API
+router.use(apiRateLimiter);
 
 /**
  * Dispatcher para compatibilidad total con el puente original (POST /api/sql)
  */
-router.post('/sql', async (req, res) => {
+router.post('/sql', async (req, res, next) => {
     const action = req.body?.action || 'consulta';
     logger.info(`Solicitud recibida en /api/sql: [Acción: ${action}]`);
 
     switch (action) {
         case 'login':
-            return authController.login(req, res);
+            return verifyAntiBotHoneypot(req, res, () =>
+                loginRateLimiter(req, res, () => authController.login(req, res))
+            );
+
+        case 'logout':
+            return authController.logout(req, res);
+
+        case 'session':
+            return authController.getSession(req, res);
 
         case 'test_connection':
             return authController.testConnection(req, res);
@@ -25,9 +36,6 @@ router.post('/sql', async (req, res) => {
 
         case 'guardar_html_os':
             return fileController.guardarHtmlOs(req, res);
-
-        case 'enviar_correo_os':
-            return emailController.enviarCorreoOs(req, res);
 
         case 'shutdown':
             return handleShutdown(req, res);
@@ -68,12 +76,12 @@ function handleShutdown(req, res) {
 router.get('/shutdown', handleShutdown);
 router.post('/shutdown', handleShutdown);
 
-// Rutas REST estructuradas
-router.post('/auth/login', authController.login);
+// Rutas REST estructuradas con Rate Limiting y Anti-Bot en Login
+router.post('/auth/login', verifyAntiBotHoneypot, loginRateLimiter, authController.login);
+router.post('/auth/logout', authController.logout);
+router.get('/auth/session', authController.getSession);
 router.get('/auth/test-connection', authController.testConnection);
 router.post('/os/masiva', osController.insertOsMasiva);
 router.post('/os/guardar-html', fileController.guardarHtmlOs);
-router.post('/os/enviar-correo', emailController.enviarCorreoOs);
 
 module.exports = router;
-

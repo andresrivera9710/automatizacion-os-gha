@@ -20,8 +20,17 @@ function getInformacionDir() {
     return baseDir;
 }
 
+function sanitizeCorrelativo(correlativo) {
+    const cleaned = String(correlativo || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 30);
+    if (!cleaned) {
+        throw new Error('Correlativo inválido.');
+    }
+    return cleaned;
+}
+
 function getHtmlOsFilePath(correlativo) {
-    const fileName = `GHA-${correlativo}-AVIANCA-NA.html`;
+    const safeCorrelativo = sanitizeCorrelativo(correlativo);
+    const fileName = `GHA-${safeCorrelativo}-AVIANCA-NA.html`;
     const dir = getInformacionDir();
     return {
         fileName,
@@ -53,4 +62,3 @@ module.exports = {
     saveHtmlOsFile,
     existsHtmlOsFile
 };
-

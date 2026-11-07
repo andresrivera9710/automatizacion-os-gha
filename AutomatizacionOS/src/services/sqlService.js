@@ -1,8 +1,31 @@
 const { sql, getPool, testConnection } = require('../config/db');
 const logger = require('../utils/logger');
 
+const GHA_DEPARTAMENTO_ID = 16;
+const NA_DIVISION_ID = 12;
+const AVIANCA_OPERADOR_ID = 19;
+
 /**
- * Autenticación por PIN para personal del departamento GHA (ID = 16)
+ * Inyecta el contexto de seguridad (SESSION_CONTEXT) en la conexión de Azure SQL
+ * para cumplimiento de políticas Row-Level Security (RLS) y aislamiento departamental.
+ */
+async function setDatabaseSessionContext(pool, loginId, departamentoId = GHA_DEPARTAMENTO_ID) {
+    try {
+        const ctxReq = pool.request();
+        ctxReq.input('CtxLoginId', sql.Int, parseInt(loginId, 10));
+        ctxReq.input('CtxDeptoId', sql.Int, parseInt(departamentoId, 10));
+        await ctxReq.query(`
+            EXEC sys.sp_set_session_context @key = N'LoginId', @value = @CtxLoginId, @read_only = 0;
+            EXEC sys.sp_set_session_context @key = N'DepartamentoId', @value = @CtxDeptoId, @read_only = 0;
+        `);
+    } catch (err) {
+        logger.warn(`Aviso inyectando SESSION_CONTEXT RLS: ${err.message}`);
+    }
+}
+
+/**
+ * Autenticación por PIN para personal del departamento GHA (ID = 16).
+ * Consulta 100% parametrizada con validación de borrado lógico (EstaEliminado = 0).
  */
 async function loginWithPin(pin) {
     if (!pin || typeof pin !== 'string' || !pin.trim()) {
@@ -12,6 +35,7 @@ async function loginWithPin(pin) {
         };
     }
 
+    const sanitizedPin = pin.trim().slice(0, 50);
     const pool = await getPool();
     const query = `
         SELECT TOP (1) 
@@ -31,7 +55,7 @@ async function loginWithPin(pin) {
     `;
 
     const request = pool.request();
-    request.input('Pin', sql.VarChar(100), pin.trim());
+    request.input('Pin', sql.VarChar(100), sanitizedPin);
     const result = await request.query(query);
 
     if (!result.recordset || result.recordset.length === 0) {
@@ -47,9 +71,9 @@ async function loginWithPin(pin) {
     const deptoNombre = String(row.DepartamentoInterno || '').trim();
     const nombreColab = String(row.Nombre || '').trim();
 
-    // Validar exclusividad para personal de GHA (DepartamentoInternoId = 16)
-    if (deptoId !== 16 && deptoNombre.toUpperCase() !== 'GHA') {
-        logger.warn(`Acceso denegado: '${nombreColab}' pertenece a '${deptoNombre}' (ID: ${deptoId}) y no a GHA.`);
+    // RLS / Aislamiento Departamental: Exclusivo para GHA (DepartamentoInternoId = 16)
+    if (deptoId !== GHA_DEPARTAMENTO_ID && deptoNombre.toUpperCase() !== 'GHA') {
+        logger.warn(`[RLS DENEGADO] '${nombreColab}' pertenece a '${deptoNombre}' (ID: ${deptoId}) y no a GHA.`);
         return {
             resultado: 0,
             mensaje: `Acceso denegado: El colaborador '${nombreColab}' pertenece al departamento '${deptoNombre}'. Este módulo es exclusivo para personal del departamento GHA.`
@@ -63,8 +87,10 @@ async function loginWithPin(pin) {
         Nombre: nombreColab,
         Puesto: row.Puesto,
         Departamento: deptoNombre,
-        DepartamentoInternoId: deptoId
+        DepartamentoInternoId: GHA_DEPARTAMENTO_ID
     };
+
+    await setDatabaseSessionContext(pool, usuario.LoginId, GHA_DEPARTAMENTO_ID);
 
     logger.success(`Login GHA exitoso: ${usuario.Nombre} (ID: ${usuario.LoginId})`);
     return {
@@ -75,19 +101,23 @@ async function loginWithPin(pin) {
 }
 
 /**
- * Inserción Masiva de Orden de Servicio GHA
- * Implementa estrategia en 2 pasos:
- * 1. Procedimiento unificado dbo.InsertarOrdenServicioMasivaGHA
- * 2. Fallback con dbo.InsertarEncabezadoOS + dbo.InsertarDetalleOSGHA
+ * Inserción Masiva de Orden de Servicio GHA con aislamiento RLS y parámetros tipados.
  */
-async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId = 19, filas = [] }) {
-    if (!loginId || !Array.isArray(filas) || filas.length === 0) {
+async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId = AVIANCA_OPERADOR_ID, filas = [] }) {
+    const safeLoginId = parseInt(loginId, 10);
+    if (!safeLoginId || isNaN(safeLoginId) || !Array.isArray(filas) || filas.length === 0) {
         throw new Error('Datos insuficientes para la inserción masiva (loginId o lista de filas vacía).');
     }
 
-    logger.info(`Iniciando inserción masiva: ${filas.length} registros por LoginId ${loginId}...`);
+    logger.info(`Iniciando inserción masiva: ${filas.length} registros por LoginId ${safeLoginId}...`);
     const pool = await getPool();
     const parsedFechaOS = new Date(fechaOS);
+    if (isNaN(parsedFechaOS.getTime())) {
+        throw new Error('Formato de fechaOS inválido.');
+    }
+
+    // Inyectar contexto RLS en Azure SQL antes de insertar
+    await setDatabaseSessionContext(pool, safeLoginId, GHA_DEPARTAMENTO_ID);
 
     // Intento 1: Procedimiento Almacenado Unificado dbo.InsertarOrdenServicioMasivaGHA
     try {
@@ -95,12 +125,12 @@ async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId =
         const detallesJson = JSON.stringify(filas);
 
         const request = pool.request();
-        request.input('LoginId', sql.Int, parseInt(loginId, 10));
-        request.input('Modificado', sql.VarChar(150), String(nombreModificado || 'SISTEMA'));
+        request.input('LoginId', sql.Int, safeLoginId);
+        request.input('Modificado', sql.VarChar(150), String(nombreModificado || 'SISTEMA').slice(0, 150));
         request.input('FechaOS', sql.DateTime, parsedFechaOS);
-        request.input('OperadorId', sql.Int, parseInt(operadorId, 10) || 19);
-        request.input('DepartamentoId', sql.Int, 16); // GHA
-        request.input('DivisionId', sql.Int, 12);     // Importación NA
+        request.input('OperadorId', sql.Int, AVIANCA_OPERADOR_ID);
+        request.input('DepartamentoId', sql.Int, GHA_DEPARTAMENTO_ID);
+        request.input('DivisionId', sql.Int, NA_DIVISION_ID);
         request.input('DetallesJson', sql.NVarChar(sql.MAX), detallesJson);
 
         const result = await request.execute('dbo.InsertarOrdenServicioMasivaGHA');
@@ -137,16 +167,15 @@ async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId =
         totalMonto += parseFloat(f.monto || 0);
     }
 
-    // A. Insertar Encabezado
     const reqEnc = pool.request();
-    reqEnc.input('LoginId', sql.Int, parseInt(loginId, 10));
-    reqEnc.input('Modificado', sql.VarChar(150), String(nombreModificado || 'SISTEMA'));
+    reqEnc.input('LoginId', sql.Int, safeLoginId);
+    reqEnc.input('Modificado', sql.VarChar(150), String(nombreModificado || 'SISTEMA').slice(0, 150));
     reqEnc.input('ItinerarioId', sql.Int, 0);
-    reqEnc.input('DepartamentoId', sql.Int, 16); // GHA
-    reqEnc.input('DivisionId', sql.Int, 12);     // NA
+    reqEnc.input('DepartamentoId', sql.Int, GHA_DEPARTAMENTO_ID);
+    reqEnc.input('DivisionId', sql.Int, NA_DIVISION_ID);
     reqEnc.input('Observaciones', sql.VarChar(255), 'CARGA MASIVA GHA - GUIA DE IMPORTACION');
     reqEnc.input('FechaOS', sql.DateTime, parsedFechaOS);
-    reqEnc.input('OperadorId', sql.Int, parseInt(operadorId, 10) || 19);
+    reqEnc.input('OperadorId', sql.Int, AVIANCA_OPERADOR_ID);
     reqEnc.input('HayTaller', sql.Int, 0);
     reqEnc.input('MaquinariaEquipo', sql.VarChar(50), '');
     reqEnc.input('Marca', sql.VarChar(50), '');
@@ -175,26 +204,25 @@ async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId =
 
     logger.success(`Encabezado creado con éxito. Correlativo asignado: ${correlativoCreado}`);
 
-    // B. Insertar cada detalle
     let insertados = 0;
     const errores = [];
 
     for (const fila of filas) {
         try {
             const reqDet = pool.request();
-            reqDet.input('LoginId', sql.Int, parseInt(loginId, 10));
-            reqDet.input('DepartamentoId', sql.Int, 16);
-            reqDet.input('CodigoServiciosId', sql.Int, 271); // Código 281 en catálogo
+            reqDet.input('LoginId', sql.Int, safeLoginId);
+            reqDet.input('DepartamentoId', sql.Int, GHA_DEPARTAMENTO_ID);
+            reqDet.input('CodigoServiciosId', sql.Int, 271);
             reqDet.input('Cantidand', sql.Int, 1);
             reqDet.input('HoraInicio', sql.VarChar(10), '00:00');
             reqDet.input('HoraFinal', sql.VarChar(10), '00:00');
             reqDet.input('TotalDif', sql.Int, 1);
-            reqDet.input('Comentarios', sql.VarChar(255), String(fila.comentarios || ''));
+            reqDet.input('Comentarios', sql.VarChar(255), String(fila.comentarios || '').slice(0, 255));
             reqDet.input('KilogramosNeto', sql.VarChar(20), '');
             reqDet.input('KilogramosVolumen', sql.VarChar(20), '');
             reqDet.input('Monto', sql.Decimal(18, 2), parseFloat(fila.monto || 0));
-            reqDet.input('NoGuia', sql.VarChar(50), String(fila.guia || ''));
-            reqDet.input('DivisionId', sql.Int, 12); // NA
+            reqDet.input('NoGuia', sql.VarChar(50), String(fila.guia || '').slice(0, 50));
+            reqDet.input('DivisionId', sql.Int, NA_DIVISION_ID);
             reqDet.input('MetodoId', sql.Int, parseInt(fila.metodoPagoId, 10) || 0);
             reqDet.input('NoBoleta', sql.VarChar(50), '');
             reqDet.input('Depositante', sql.VarChar(100), '');
@@ -230,6 +258,6 @@ async function insertOsMasiva({ loginId, nombreModificado, fechaOS, operadorId =
 module.exports = {
     loginWithPin,
     testConnection,
-    insertOsMasiva
+    insertOsMasiva,
+    setDatabaseSessionContext
 };
-

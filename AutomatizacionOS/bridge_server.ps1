@@ -9,11 +9,11 @@ param (
     [int]$Port = 3080
 )
 
-$server = "mysqullaats23.database.windows.net"
-$databaseSIO = "SIO"
+$server = if ($env:DB_SERVER) { $env:DB_SERVER } else { "mysqullaats23.database.windows.net" }
+$databaseSIO = if ($env:DB_NAME) { $env:DB_NAME } else { "SIO" }
 $databaseMaster = "master"
-$dbUser = "LaatsBdAD"
-$dbPass = "AndresRivera!9710"
+$dbUser = if ($env:DB_USER) { $env:DB_USER } else { "" }
+$dbPass = if ($env:DB_PASSWORD) { $env:DB_PASSWORD } else { "" }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   PUENTE LOCAL SIO - AUTOMATIZACION OS GHA (Puerto: $Port)   " -ForegroundColor Yellow

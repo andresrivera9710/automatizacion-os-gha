@@ -7,7 +7,33 @@
   NODE_VERSION = "20"
 
 [[redirects]]
+  from = "/"
+  to = "/login"
+  status = 302
+  force = true
+
+[[redirects]]
+  from = "/login"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/welcome"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://localhost:3080 http://127.0.0.1:3080 https://api.ipify.org; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+    Cache-Control = "public, max-age=0, must-revalidate"
