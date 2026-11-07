@@ -1,0 +1,15 @@
+{
+  "name": "sio-servidor-puente-netlify",
+  "version": "1.0.0",
+  "description": "Servidor Puente Central en Netlify hacia Azure SQL (SIO) para proyectos locales",
+  "main": "netlify/functions/sql.js",
+  "scripts": {
+    "build": "echo 'Servidor Puente Netlify listo para producción'"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

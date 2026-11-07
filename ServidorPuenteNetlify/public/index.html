@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Servidor Puente SIO en Netlify | Azure SQL Gateway</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #3b82f6;
+            --emerald: #10b981;
+            --amber: #f59e0b;
+            --danger: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 32px 20px;
+        }
+        .container {
+            max-width: 920px;
+            margin: 0 auto;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .title-group h1 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+        .title-group p {
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+        .badge {
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--border);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .card-value {
+            font-size: 1.15rem;
+            font-weight: 800;
+            word-break: break-all;
+            color: #60a5fa;
+        }
+        .btn {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.88rem;
+            transition: opacity 0.15s;
+        }
+        .btn:hover { opacity: 0.9; }
+        pre {
+            background: #090d16;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+            overflow-x: auto;
+            color: #e2e8f0;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title-group">
+                <h1>☁️ Servidor Puente SIO (Netlify Cloud Gateway)</h1>
+                <p>Puente central en la nube conectado a Azure SQL (SIO) para todos tus proyectos locales</p>
+            </div>
+            <div class="badge" id="statusBadge">⏳ Verificando...</div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-label">Endpoint API para Proyectos Locales</div>
+                <div class="card-value" id="endpointUrl">Cargando...</div>
+                <button class="btn" style="margin-top:12px;" onclick="copiarEndpoint()">📋 Copiar URL del Puente</button>
+            </div>
+            <div class="card">
+                <div class="card-label">IP Saliente del Servidor Netlify</div>
+                <div class="card-value" id="netlifyIp" style="color:#34d399;">Detectando...</div>
+                <p style="font-size:0.78rem; color:var(--muted); margin-top:8px;">IP desde la cual Netlify se conecta a Azure SQL (SIO)</p>
+            </div>
+            <div class="card">
+                <div class="card-label">Base de Datos Azure SQL</div>
+                <div class="card-value" id="dbStatus" style="color:#f8fafc;">Verificando...</div>
+                <button class="btn" style="margin-top:12px; background:#059669;" onclick="verificarServidor()">🔄 Probar Conexión Ahora</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-label">Cómo conectar cualquiera de tus proyectos locales a este servidor Netlify</div>
+            <p style="font-size:0.88rem; color:var(--muted);">
+                En cualquiera de tus proyectos locales (HTML, JS, React o Node), apunta tus peticiones <code>fetch</code> a la URL de este servidor puente sin necesidad de iniciar un servidor local en el puerto 3080:
+            </p>
+            <pre id="codeSnippet"></pre>
+        </div>
+    </div>
+
+    <script>
+        const apiEndpoint = window.location.origin + '/api/sql';
+        document.getElementById('endpointUrl').textContent = apiEndpoint;
+        document.getElementById('codeSnippet').textContent =
+`// Conectar proyecto local al Servidor Puente publicado en Netlify:
+const NETLIFY_BRIDGE_URL = "${apiEndpoint}";
+
+async function consultarPuenteNetlify(payload) {
+    const response = await fetch(NETLIFY_BRIDGE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+    });
+    return await response.json();
+}
+
+// Ejemplo 1: Probar conexión desde tu proyecto local
+consultarPuenteNetlify({ action: "test_connection" }).then(console.log);
+
+// Ejemplo 2: Validar PIN de colaborador en SIO
+consultarPuenteNetlify({ action: "login", pin: "1234" }).then(console.log);`;
+
+        async function verificarServidor() {
+            const badge = document.getElementById('statusBadge');
+            const ipEl = document.getElementById('netlifyIp');
+            const dbEl = document.getElementById('dbStatus');
+            badge.innerHTML = '<span style="color:#38bdf8;">⏳ Conectando...</span>';
+
+            try {
+                const resp = await fetch(apiEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'server_info' })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.resultado === 1) {
+                    badge.innerHTML = '<span style="color:#10b981;">● Conectado</span>';
+                    ipEl.textContent = data.netlifyServerIp || 'Activa (Cloud)';
+                    dbEl.textContent = `${data.baseDatos || 'SIO'} (En Línea)`;
+                } else {
+                    badge.innerHTML = '<span style="color:#f59e0b;">○ Desconectado</span>';
+                    ipEl.textContent = data.netlifyServerIp || 'Detectada';
+                    dbEl.textContent = data.mensaje || 'Error de conexión';
+                }
+            } catch (err) {
+                badge.innerHTML = '<span style="color:#ef4444;">○ Desconectado</span>';
+                dbEl.textContent = err.message;
+            }
+        }
+
+        function copiarEndpoint() {
+            navigator.clipboard.writeText(apiEndpoint);
+            alert('URL copiada: ' + apiEndpoint);
+        }
+
+        verificarServidor();
+    </script>
+</body>
+</html>
