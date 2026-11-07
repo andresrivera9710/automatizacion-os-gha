@@ -1,0 +1,12 @@
+[build]
+  base = "AutomatizacionOS"
+  publish = "public"
+  command = "echo 'Build completado - Sirviendo frontend desde AutomatizacionOS/public'"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
