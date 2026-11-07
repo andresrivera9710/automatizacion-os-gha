@@ -142,3 +142,4 @@ module.exports = {
     requireAuthView,
     SESSION_COOKIE_NAME
 };
+
