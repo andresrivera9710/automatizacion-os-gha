@@ -1,5 +1,5 @@
-/          /login        302!
-/login     /index.html   200
-/welcome   /index.html   200
-/*         /index.html   200
-
+/api/sql   /.netlify/functions/sql   200!
+/          /login                    302!
+/login     /index.html               200
+/welcome   /index.html               200
+/*         /index.html               200

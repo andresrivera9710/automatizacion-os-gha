@@ -1,10 +1,17 @@
 [build]
   base = "AutomatizacionOS"
   publish = "public"
-  command = "echo 'Build completado - Sirviendo frontend desde AutomatizacionOS/public'"
+  functions = "netlify/functions"
+  command = "echo 'Build completado - Sirviendo frontend y Netlify Functions desde AutomatizacionOS'"
 
 [build.environment]
   NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/api/sql"
+  to = "/.netlify/functions/sql"
+  status = 200
+  force = true
 
 [[redirects]]
   from = "/"
