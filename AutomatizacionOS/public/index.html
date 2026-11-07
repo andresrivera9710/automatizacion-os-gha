@@ -790,14 +790,13 @@
         </div>
 
         <div class="header-meta">
-            <div class="meta-pill" title="IP Pública Detectada para regla FLORPELLECER">
+            <div class="meta-pill" style="display: none;" title="IP Pública Detectada para regla FLORPELLECER">
                 <span class="status-dot"></span>
                 <span>IP Cliente:</span>
                 <strong id="labelClientIp">Detectando...</strong>
             </div>
-            <div class="meta-pill" title="Estado de Conexión al Servidor SIO Azure">
-                <span>Estado:</span>
-                <strong id="labelConnectionStatus">Inicializando...</strong>
+            <div class="meta-pill" title="Estado de Conexión">
+                <strong id="labelConnectionStatus">Conectando...</strong>
             </div>
             <button type="button" class="btn btn-danger btn-sm" onclick="confirmarCierreYApagado()"
                 style="padding: 6px 14px; font-size: 0.8rem; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;"
@@ -1492,7 +1491,7 @@
                             bridgeDisponible = true;
                             SQL_DIRECT_CONFIG.localBridgeUrl = endpoint;
                             if (labelConn) {
-                                labelConn.innerHTML = '<span style="color:#10b981;">● En Línea (Servicio SIO)</span>';
+                                labelConn.innerHTML = '<span style="color:#10b981;">● Conectado</span>';
                             }
                             return true;
                         }
@@ -1504,7 +1503,7 @@
 
             bridgeDisponible = false;
             if (labelConn) {
-                labelConn.innerHTML = '<span style="color:#f59e0b;">○ Servicio SIO Desconectado</span>';
+                labelConn.innerHTML = '<span style="color:#f59e0b;">○ Desconectado</span>';
             }
             return false;
         }
