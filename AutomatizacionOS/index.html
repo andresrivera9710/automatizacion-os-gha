@@ -1781,11 +1781,16 @@
                     break;
                 }
 
-                if (filaTexto.includes('TARJETA') || (valItem === '' && valGuia === '')) {
+                const itemUpper = valItem.toUpperCase();
+                const guiaUpper = valGuia.toUpperCase();
+                const esFilaResumen = ['TARJETA', 'EF/CQ', 'CREDITO', 'CRÉDITO', 'EFECTIVO'].includes(itemUpper) ||
+                    ['TARJETA', 'EF/CQ', 'CREDITO', 'CRÉDITO', 'TOTAL'].includes(guiaUpper) ||
+                    (valItem === '' && valGuia === '') ||
+                    !valGuia;
+
+                if (esFilaResumen) {
                     continue;
                 }
-
-                if (!valGuia && !valItem) continue;
 
                 const numTC = parsearDecimal(mapeoIndices.tc !== undefined ? fila[mapeoIndices.tc] : null);
                 const numEFCQ = parsearDecimal(mapeoIndices.efcq !== undefined ? fila[mapeoIndices.efcq] : null);
