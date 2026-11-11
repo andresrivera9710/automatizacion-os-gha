@@ -71,3 +71,4 @@ jobs:
             --site="$NETLIFY_SITE_ID" \
             --auth="$NETLIFY_AUTH_TOKEN" \
             --message="CI/CD GitHub Actions Deploy (${GITHUB_SHA::7})"
+

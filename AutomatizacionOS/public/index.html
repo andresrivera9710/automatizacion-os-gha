@@ -938,7 +938,7 @@
                     Arrastre su archivo Excel (.xlsx / .xls / .csv) aquí o haga clic para examinar
                 </h3>
                 <p style="font-size: 0.84rem; color: var(--muted);">
-                    Se identificarán automáticamente las columnas: <strong>ITEM, FACTURA, GUIA AEREA, TC, EF/CQ, DP/TF,
+                    Se identificarán automáticamente las columnas: <strong>ITEM, FACTURA, GUIA AEREA, MONTO, TC, EF/CQ, DP/TF,
                         AUTORIZACION</strong>
                 </p>
                 <input type="file" id="fileExcelInput" accept=".xlsx, .xls, .csv" style="display: none;"
@@ -1465,10 +1465,13 @@
                 labelConn.innerHTML = '<span style="color:#38bdf8;">⏳ Conectando...</span>';
             }
 
-            // URLs candidatas a verificar en orden de prioridad (primero mismo origen / Netlify Function, luego puente local)
+            // URLs candidatas a verificar en orden de prioridad (primero mismo origen / Netlify Cloud API, luego puente local)
             const endpointsCandidatos = [];
             if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
                 endpointsCandidatos.push(window.location.origin + '/api/sql');
+            }
+            if (!endpointsCandidatos.includes('https://automatizacion-os-gha.netlify.app/api/sql')) {
+                endpointsCandidatos.push('https://automatizacion-os-gha.netlify.app/api/sql');
             }
             endpointsCandidatos.push('http://localhost:3080/api/sql');
             endpointsCandidatos.push('http://127.0.0.1:3080/api/sql');
@@ -1738,6 +1741,7 @@
                         else if (nombreCol.includes('DP/TF') || nombreCol.includes('DP') || nombreCol.includes('DEPOSITO') || nombreCol.includes('DEPÓSITO')) mapeoIndices.dptf = colIdx;
                         else if (nombreCol.includes('CREDITO') || nombreCol.includes('CRÉDITO')) mapeoIndices.credito = colIdx;
                         else if (nombreCol.includes('AUTORIZACION') || nombreCol.includes('AUTORIZACIÓN')) mapeoIndices.autorizacion = colIdx;
+                        else if (nombreCol.includes('MONTO') || nombreCol.includes('IMPORTE') || nombreCol.includes('VALOR')) mapeoIndices.monto = colIdx;
                     });
                     break;
                 }
@@ -1786,6 +1790,7 @@
                 const numTC = parsearDecimal(mapeoIndices.tc !== undefined ? fila[mapeoIndices.tc] : null);
                 const numEFCQ = parsearDecimal(mapeoIndices.efcq !== undefined ? fila[mapeoIndices.efcq] : null);
                 const numDPTF = parsearDecimal(mapeoIndices.dptf !== undefined ? fila[mapeoIndices.dptf] : null);
+                const numMontoDirecto = parsearDecimal(mapeoIndices.monto !== undefined ? fila[mapeoIndices.monto] : null);
 
                 let monto = 0;
                 let origenColumna = '';
@@ -1814,6 +1819,32 @@
                     origenColumna = 'TC';
                     metodoPagoId = 1;
                     metodoPagoNombre = 'TARJETA DE CREDITO';
+                }
+                // 4. Si viene columna directa MONTO (ej. Formato VENTAS TELEFACSIMIL)
+                else if (numMontoDirecto > 0) {
+                    monto = numMontoDirecto;
+                    const authUpper = valAutorizacion.toUpperCase();
+                    if (authUpper.includes('TRANSFERENCIA') || authUpper.includes('TRANSF')) {
+                        origenColumna = 'DP/TF';
+                        metodoPagoId = 2;
+                        metodoPagoNombre = 'TRANSFERENCIA';
+                    } else if (authUpper.includes('DEPOSITO') || authUpper.includes('DEPÓSITO') || authUpper.includes('DEP')) {
+                        origenColumna = 'DP/TF';
+                        metodoPagoId = 3;
+                        metodoPagoNombre = 'DEPOSITO';
+                    } else if (authUpper.includes('TARJETA') || authUpper.includes('TC')) {
+                        origenColumna = 'TC';
+                        metodoPagoId = 1;
+                        metodoPagoNombre = 'TARJETA DE CREDITO';
+                    } else if (authUpper.includes('EFECTIVO') || authUpper.includes('EF')) {
+                        origenColumna = 'EF/CQ';
+                        metodoPagoId = 0;
+                        metodoPagoNombre = 'Solo Monto (EF/CQ)';
+                    } else {
+                        origenColumna = 'DP/TF';
+                        metodoPagoId = 0;
+                        metodoPagoNombre = 'Sin Seleccionar';
+                    }
                 }
 
                 filasResultado.push({

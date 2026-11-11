@@ -3,9 +3,16 @@ const sqlService = require('../../src/services/sqlService');
 
 const COOKIE_NAME = 'sio_gha_sid';
 const MAX_AGE_SEC = 8 * 60 * 60; // 8 horas
+const FALLBACK_SECRET = crypto.randomBytes(32).toString('hex');
+
+const ALLOWED_ORIGINS = [
+    'https://automatizacion-os-gha.netlify.app',
+    'http://localhost:3080',
+    'http://127.0.0.1:3080'
+];
 
 function getSecret() {
-    return process.env.SESSION_SECRET || 'sio_gha_laats_secure_session_secret_key_2026_production_9710';
+    return process.env.SESSION_SECRET || FALLBACK_SECRET;
 }
 
 function createSignedToken(user) {
@@ -48,13 +55,16 @@ function parseCookies(cookieHeader) {
 }
 
 exports.handler = async function (event) {
-    const origin = event.headers?.origin || event.headers?.Origin || '*';
+    const reqOrigin = event.headers?.origin || event.headers?.Origin || '';
+    const allowedOrigin = ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : ALLOWED_ORIGINS[0];
     const headers = {
         'Content-Type': 'application/json; charset=utf-8',
         'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
         'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Vary': 'Origin',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
         'Access-Control-Allow-Credentials': 'true'
     };
@@ -105,7 +115,7 @@ exports.handler = async function (event) {
                 headers,
                 body: JSON.stringify({
                     resultado: -1,
-                    mensaje: `Error de conexión: ${resConn.error}`
+                    mensaje: 'No se pudo establecer conexión con el servicio de base de datos.'
                 })
             };
         }
@@ -198,13 +208,13 @@ exports.handler = async function (event) {
             headers,
             body: JSON.stringify({ resultado: -1, mensaje: `Acción '${action}' no reconocida.` })
         };
-    } catch (err) {
+    } catch (_) {
         return {
             statusCode: 500,
             headers,
             body: JSON.stringify({
                 resultado: -1,
-                mensaje: `Error en el servicio SQL: ${err.message}`
+                mensaje: 'Error interno procesando la solicitud en el servicio seguro.'
             })
         };
     }
